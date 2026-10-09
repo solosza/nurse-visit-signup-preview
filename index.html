@@ -1,0 +1,1485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<!-- No month here: render() sets the real period once the data is loaded. A hardcoded
+     month in the static title lies before the first load and stays lying if it fails. -->
+<title>Nurse Visit Sign-Up</title>
+<style>
+  :root {
+    --bg: #FBF9F7;
+    --ink: #2B2A33;
+    --card-border: #ECE7E3;
+    --muted: #A08A93;
+    --muted2: #C7BFC4;
+    --gold: #B8905A;
+    --pink: #B8637A;
+    --green: #4E8D6E;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--bg);
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: var(--ink);
+    padding-bottom: 48px;
+  }
+  .wrap { max-width: 620px; margin: 0 auto; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .fade { animation: fadeIn 0.25s ease-out; }
+  input:focus, button:focus-visible { outline: 2px solid var(--pink); outline-offset: 2px; }
+
+  /* Header */
+  .hdr {
+    background: linear-gradient(135deg, #4A3F55 0%, #6B5570 100%);
+    padding: 28px 20px 22px;
+    color: var(--bg);
+  }
+  .hdr .eyebrow {
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    opacity: 0.75; margin-bottom: 6px; font-weight: 600;
+  }
+  .hdr .title { font-size: 22px; font-weight: 700; font-family: Georgia, serif; }
+  .hdr .backrow { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .hdr .back {
+    background: rgba(255,255,255,0.15); border: none; color: var(--bg);
+    font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 8px; cursor: pointer;
+  }
+  .hdr .back:hover { background: rgba(255,255,255,0.25); }
+  .hdr .daytitle { font-size: 20px; font-weight: 700; font-family: Georgia, serif; }
+  .hdr .covered { font-size: 12px; opacity: 0.8; margin-top: 4px; font-weight: 600; }
+
+  /* Identity bar */
+  .whoami {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    font-size: 12px; color: var(--muted); padding: 10px 14px 0; text-align: center;
+  }
+  .whoami b { color: var(--ink); }
+  .whoami button {
+    background: none; border: none; color: var(--pink); font-size: 12px;
+    font-weight: 600; cursor: pointer; padding: 2px 4px; text-decoration: underline;
+  }
+
+  /* Month grid */
+  .gridwrap { padding: 14px 14px 0; }
+  .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 7px; }
+  .day {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    padding: 10px 2px; border-radius: 10px; border: 1.5px solid var(--card-border);
+    background: #fff; cursor: pointer; box-shadow: rgba(43,42,51,0.05) 0 1px 2px;
+    transition: transform 0.08s ease, border-color 0.15s ease;
+  }
+  .day:hover { transform: translateY(-1px); border-color: var(--muted2); }
+  .day .dow { font-size: 9px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+  .day .num { font-size: 15px; font-weight: 700; color: var(--ink); }
+  .day .cnt { font-size: 9px; font-weight: 700; }
+  .cnt.zero { color: var(--muted2); }
+  .cnt.some { color: var(--gold); }
+  .cnt.full { color: var(--green); }
+
+  .hint { text-align: center; font-size: 11px; color: var(--muted); margin: 18px 20px; }
+  .foot { text-align: center; font-size: 11px; color: var(--muted); margin-top: 18px; padding: 0 20px; }
+
+  /* Day detail */
+  .daywrap { padding: 14px 14px 0; }
+  .section-label {
+    font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+    font-weight: 700; margin: 18px 4px 8px;
+  }
+  .section-label:first-child { margin-top: 6px; }
+  .visit {
+    display: flex; gap: 12px; background: #fff; border: 1.5px solid var(--card-border);
+    border-radius: 12px; padding: 12px 12px; margin-bottom: 8px; box-shadow: rgba(43,42,51,0.05) 0 1px 2px;
+  }
+  .visit.claimed { background: #F4F8F5; border-color: #D5E7DD; }
+  .vtime { display: flex; flex-direction: column; align-items: center; min-width: 46px; padding-top: 2px; }
+  .vtime .t { font-size: 15px; font-weight: 700; color: var(--ink); line-height: 1.1; }
+  .vtime .ap { font-size: 10px; font-weight: 700; color: var(--muted); }
+  .vbody { flex: 1; min-width: 0; }
+  .vpatient { font-size: 15px; font-weight: 700; color: var(--ink); }
+  .vloc { font-size: 12px; color: var(--muted); font-weight: 600; margin-left: 6px; }
+  .vtask { font-size: 12.5px; color: #55505A; margin-top: 3px; line-height: 1.35; }
+  .vaction { margin-top: 9px; }
+  .btn-signup {
+    background: var(--pink); color: #fff; border: none; font-size: 12.5px; font-weight: 700;
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+  }
+  .btn-signup:hover { filter: brightness(1.05); }
+  .claimed-by { display: flex; align-items: center; gap: 8px; margin-top: 9px; flex-wrap: wrap; }
+  .claimed-by .tag {
+    font-size: 12.5px; font-weight: 700; color: var(--green);
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .claimed-by .release {
+    background: none; border: none; color: var(--muted); font-size: 12px;
+    text-decoration: underline; cursor: pointer; font-weight: 600; padding: 0;
+  }
+
+  /* Loading / toast */
+  .loading { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+  .spinner {
+    width: 22px; height: 22px; border: 2.5px solid var(--card-border); border-top-color: var(--pink);
+    border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px;
+  }
+  .toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+    background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 10px;
+    font-size: 13px; font-weight: 600; box-shadow: rgba(0,0,0,0.2) 0 4px 16px;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s ease; z-index: 50; max-width: 88%;
+  }
+  .toast.show { opacity: 1; }
+  .live-dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green); margin-right: 5px; vertical-align: middle;
+  }
+  .live-dot.off { background: var(--muted2); }
+
+  /* Dev-data banner. Deliberately loud: a staging page that looks identical to
+     the live one is worse than no staging page, because you cannot tell which
+     data you are about to change. */
+  .envbar {
+    background: #8A4B2A; color: #fff; font-size: 12px; font-weight: 700;
+    text-align: center; padding: 7px 14px; letter-spacing: 0.04em;
+  }
+  .envbar code {
+    background: rgba(255,255,255,0.18); padding: 1px 5px; border-radius: 4px;
+    font-size: 11.5px;
+  }
+
+  /* Passcode gate */
+  .gate { padding: 28px 20px; text-align: center; }
+  .gatetext { font-size: 13.5px; color: #55505A; margin: 0 0 16px; line-height: 1.5; }
+  .gaterow { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .gaterow input {
+    flex: 1 1 200px; max-width: 260px; font-size: 16px; /* 16px stops iOS zooming on focus */
+    padding: 9px 12px; border: 1.5px solid var(--card-border); border-radius: 8px;
+    background: #fff; color: var(--ink);
+  }
+  .gateerr { font-size: 12.5px; color: var(--pink); font-weight: 600; margin: 14px 0 0; }
+
+  /* View switcher */
+  .tabs { display: flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
+  .tab {
+    background: rgba(255,255,255,0.14); border: none; color: var(--bg);
+    font-size: 12.5px; font-weight: 700; padding: 6px 11px; border-radius: 999px;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .tab:hover { background: rgba(255,255,255,0.24); }
+  .tab.on { background: var(--bg); color: #4A3F55; }
+  .pill {
+    background: var(--pink); color: #fff; font-size: 10.5px; font-weight: 700;
+    border-radius: 999px; padding: 1px 6px; min-width: 16px; text-align: center;
+  }
+  .tab.on .pill { background: var(--pink); color: #fff; }
+
+  /* Month navigation */
+  .monthnav { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
+  .mlabel { font-size: 20px; font-weight: 700; font-family: Georgia, serif; }
+  .mnav {
+    background: rgba(255,255,255,0.15); border: none; color: var(--bg);
+    font-size: 17px; line-height: 1; font-weight: 700; width: 30px; height: 30px;
+    border-radius: 8px; cursor: pointer;
+  }
+  .mnav:hover:not(:disabled) { background: rgba(255,255,255,0.28); }
+  .mnav:disabled { opacity: 0.28; cursor: default; }
+
+  /* Empty states */
+  .empty { text-align: center; padding: 44px 24px; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+  .emptyact { margin-top: 16px; }
+
+  /* Date line inside a card, used where the card is away from its day heading */
+  .vdate { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase;
+           letter-spacing: 0.06em; margin-bottom: 3px; }
+
+  /* Facility grouping */
+  .fachead {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+    margin: 22px 4px 4px; padding-bottom: 6px; border-bottom: 2px solid var(--card-border);
+  }
+  .fachead:first-child { margin-top: 6px; }
+  .facname { font-size: 16px; font-weight: 700; font-family: Georgia, serif; color: var(--ink); }
+  .faccount { font-size: 11.5px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+  .facday {
+    font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+    font-weight: 700; margin: 14px 4px 7px;
+  }
+
+  /* Facility calendar. Laid out like the paper version: weekday columns, dates
+     in the corner, every visit listed in its day cell. */
+  .calwrap { padding: 12px 10px 0; }
+  .calhead {
+    background: linear-gradient(135deg, #4A3F55 0%, #6B5570 100%);
+    color: var(--bg); border-radius: 10px 10px 0 0; padding: 12px 14px; margin-top: 22px;
+  }
+  .calhead:first-child { margin-top: 4px; }
+  .calmonth { font-size: 22px; font-weight: 700; font-family: Georgia, serif; line-height: 1.1; }
+  .calfac {
+    font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+    font-weight: 700; opacity: 0.9; margin-top: 3px;
+  }
+  .calpat { opacity: 0.75; font-weight: 600; }
+  .calsep { opacity: 0.45; font-weight: 400; }
+  .calcount { font-size: 11.5px; opacity: 0.8; font-weight: 600; margin-top: 4px; }
+
+  .calgrid {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    border: 1px solid var(--card-border); border-radius: 0 0 10px 10px;
+    overflow: hidden; background: var(--card-border); gap: 1px;
+  }
+  .caldow {
+    background: #EFEAE6; color: #6B6470; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em; text-align: center; padding: 6px 2px;
+  }
+  .calcell {
+    background: #fff; min-height: 74px; padding: 4px 4px 6px; cursor: pointer;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .calcell:hover { background: #FCFAF8; }
+  .calcell.empty { background: #F7F4F1; cursor: default; }
+  .calcell.quiet { background: #FCFBFA; }
+  .caldate { font-size: 11px; font-weight: 700; color: var(--ink); text-align: right; opacity: 0.65; }
+  .calslot { font-size: 9.5px; line-height: 1.3; word-break: break-word; }
+  .caltime { color: var(--muted); font-weight: 700; }
+  /* Open slots are deliberately faint. They must be visible, because spotting an
+     unfilled visit is the whole job, but they must not shout over the names.
+     Some facilities have four open slots every single day. */
+  .calopen { color: #CFC7CC; font-weight: 600; font-style: italic; }
+  .calslot.free .caltime { color: #CFC7CC; font-weight: 600; }
+
+  /* The colour-coded nurse name. Same chip everywhere a name appears. */
+  .nchip {
+    display: inline-block; padding: 0 4px; border-radius: 3px;
+    font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom;
+  }
+
+  /* Phones: the calendar is the point, so give it the full width and shrink the
+     type rather than letting cells collapse or scroll sideways. */
+  @media (max-width: 560px) {
+    .calwrap { padding: 10px 6px 0; }
+    .calcell { min-height: 62px; padding: 3px 2px 4px; }
+    .calslot { font-size: 8.5px; }
+    .caldate { font-size: 10px; }
+    .calmonth { font-size: 19px; }
+  }
+
+  /* --- Editing (feature 3): controls show only for a signed-in coordinator --- */
+  .vedit { display: flex; gap: 16px; margin-top: 9px; }
+  .vedit button { background: none; border: none; font-size: 12px; font-weight: 700; cursor: pointer; padding: 0; text-decoration: underline; }
+  .vedit .e { color: var(--gold); }
+  .vedit .d { color: var(--pink); }
+  .addvisit { display: block; width: 100%; margin: 12px 0 4px; background: #fff; border: 1.5px dashed var(--muted2);
+    color: var(--pink); font-size: 13px; font-weight: 700; padding: 12px; border-radius: 12px; cursor: pointer; }
+  .addvisit:hover { border-color: var(--pink); }
+  .modal-bg { position: fixed; inset: 0; background: rgba(20,16,26,0.45); display: flex; align-items: center;
+    justify-content: center; padding: 16px; z-index: 50; animation: fadeIn 0.15s ease-out; }
+  .modal { background: #fff; border-radius: 16px; padding: 20px; width: 100%; max-width: 420px;
+    box-shadow: rgba(0,0,0,0.25) 0 10px 40px; max-height: 90vh; overflow: auto; }
+  .modal h3 { margin: 0 0 12px; font-family: Georgia, serif; font-size: 19px; }
+  .modal label { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); font-weight: 700; margin: 12px 0 4px; }
+  .modal input, .modal textarea { width: 100%; font-size: 16px; font-family: inherit; color: var(--ink);
+    border: 1.5px solid var(--card-border); border-radius: 9px; padding: 9px 10px; background: #fff; }
+  .modal textarea { resize: vertical; min-height: 56px; }
+  .modal .row2 { display: flex; gap: 10px; }
+  .modal .row2 > div { flex: 1; min-width: 0; }
+  .modal .acts { display: flex; gap: 10px; margin-top: 18px; }
+  .modal .acts button { flex: 1; font-size: 14px; font-weight: 700; padding: 11px; border-radius: 10px; cursor: pointer; border: none; }
+  .modal .save { background: var(--pink); color: #fff; }
+  .modal .cancel { background: #F0ECEA; color: var(--ink); }
+  .modal .err { color: var(--pink); font-size: 12.5px; font-weight: 600; margin-top: 10px; min-height: 16px; }
+</style>
+</head>
+<body>
+<div id="envbar"></div>
+<div class="wrap">
+  <div id="header"></div>
+  <div id="whoami" class="whoami"></div>
+  <div id="content">
+    <div class="loading"><div class="spinner"></div>Loading schedule…</div>
+  </div>
+  <div class="foot" id="foot"></div>
+</div>
+<div id="toast" class="toast"></div>
+<div id="modal" style="display:none"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var SUPABASE_URL = "https://toqcipuepxdmlhkpjozw.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_hKZKOQGTihooRc4InIU0VA_19KqKGoM";
+
+  // --- which data does this page talk to? ---
+  //
+  // This page is a static file, so a git branch protects the HTML and nothing
+  // else: a branch copy opened on a laptop still writes to real sign-ups unless
+  // it is pointed somewhere else. The default is therefore INVERTED. Only the
+  // real published URL gets the live table; everywhere else -- localhost,
+  // file://, a staging repo -- gets the dev copy. You have to actually be on
+  // the live site to touch live data by accident.
+  //
+  //   ?dev=1    force the dev table, including on the live site
+  //   ?prod=1   force the live table, e.g. to read prod from a local checkout
+  var IS_LIVE_SITE = location.hostname === "solosza.github.io" &&
+                     location.pathname.indexOf("/nurse-visit-signup/") === 0;
+  // PREVIEW BUILD: always the practice table. ?prod=1 is ignored here.
+  var USE_DEV = true;
+  var TABLE = USE_DEV ? "visits_dev" : "visits";
+  // Master daily schedule (feature 4). The template functions take TABLE as their
+  // target and derive the matching template table themselves; the app reads the
+  // template list directly, so it needs the name too.
+  var TEMPLATE_TABLE = USE_DEV ? "visit_template_dev" : "visit_template";
+
+  var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  var state = {
+    visits: [],            // all rows
+    byId: {},              // id -> row
+    selectedDate: null,    // 'YYYY-MM-DD' or null (month view)
+    nurse: localStorage.getItem("nurseName") || "",
+    live: false,
+    locked: false,         // true while the passcode gate is showing
+    view: "month",         // "month" | "mine" | "facility"
+    month: null,           // 'YYYY-MM' currently shown; null until data loads
+    editMode: false        // coordinator editing (feature 3); needs a signed-in session
+  };
+
+  var MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  var DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  var DOW_LONG = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c];
+    });
+  }
+  function parseDate(iso) { // 'YYYY-MM-DD' -> local Date (no TZ shift)
+    var p = iso.split("-"); return new Date(+p[0], +p[1]-1, +p[2]);
+  }
+
+  // time_label is free text ("6:00 AM", "3:15pm", "11am", "15:30", "noon").
+  // Returns minutes after midnight, or null if it cannot be read as a time.
+  function parseTime(label) {
+    var s = String(label == null ? "" : label).trim().toLowerCase().replace(/\./g, "");
+    if (s === "noon") return 12 * 60;
+    if (s === "midnight") return 0;
+    var m = /^(\d{1,2})(?::?(\d{2}))?\s*(am|pm|a|p)?$/.exec(s);
+    if (!m) return null;
+    var h = +m[1], min = m[2] ? +m[2] : 0, ap = m[3] ? m[3].charAt(0) : null;
+    if (min > 59) return null;
+    if (ap) {
+      if (h < 1 || h > 12) return null;
+      h = (h % 12) + (ap === "p" ? 12 : 0);
+    } else if (h > 23 || !m[2]) {
+      return null;  // a bare "3" is ambiguous; "15:30" is fine
+    }
+    return h * 60 + min;
+  }
+  // Canonical label for a time typed into a form: "3:15pm" -> "3:15 PM".
+  function formatTime(mins) {
+    var h = Math.floor(mins / 60), m = mins % 60;
+    return ((h % 12) || 12) + ":" + String(m).padStart(2, "0") + " " + (h < 12 ? "AM" : "PM");
+  }
+  // Visits on a day are shown in clock order. sort_order is only the tie-break:
+  // it is the slot key the daily schedule uses to find its rows (db/011), so it
+  // is never renumbered to follow the clock. Unreadable times go last.
+  function byTime(a, b) {
+    var ta = parseTime(a.time_label), tb = parseTime(b.time_label);
+    if (ta !== tb) {
+      if (ta === null) return 1;
+      if (tb === null) return -1;
+      return ta - tb;
+    }
+    return (a.sort_order || 0) - (b.sort_order || 0);
+  }
+
+  var toastTimer;
+  function toast(msg) {
+    var t = el("toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(function(){ t.classList.remove("show"); }, 2600);
+  }
+
+  function getNurse() {
+    if (state.nurse) return state.nurse;
+    var name = window.prompt("Enter your name so others can see who signed up:");
+    if (name && name.trim()) {
+      state.nurse = name.trim();
+      localStorage.setItem("nurseName", state.nurse);
+      renderWhoami();
+    }
+    return state.nurse;
+  }
+  function changeNurse() {
+    var name = window.prompt("Your name:", state.nurse || "");
+    if (name && name.trim()) {
+      state.nurse = name.trim();
+      localStorage.setItem("nurseName", state.nurse);
+      renderWhoami(); render();
+    }
+  }
+
+  // ---- data ----
+  function indexVisits() {
+    state.byId = {};
+    for (var i = 0; i < state.visits.length; i++) state.byId[state.visits[i].id] = state.visits[i];
+  }
+  function countFor(dateIso) {
+    var total = 0, claimed = 0;
+    for (var i = 0; i < state.visits.length; i++) {
+      if (state.visits[i].visit_date === dateIso) { total++; if (state.visits[i].claimed_by) claimed++; }
+    }
+    return { total: total, claimed: claimed };
+  }
+  function datesList() {
+    var seen = {}, out = [];
+    for (var i = 0; i < state.visits.length; i++) {
+      var d = state.visits[i].visit_date;
+      if (!seen[d]) { seen[d] = 1; out.push(d); }
+    }
+    out.sort();
+    return out;
+  }
+
+  // ---- months ----
+  //
+  // The schedule is no longer assumed to be one month. Everything below works off
+  // whatever months actually exist in the data, so adding September rows is the
+  // only step needed to get a September view -- no code change, no redeploy.
+
+  function monthKey(iso) { return iso.slice(0, 7); }          // 'YYYY-MM-DD' -> 'YYYY-MM'
+
+  function monthsList() {
+    var seen = {}, out = [];
+    for (var i = 0; i < state.visits.length; i++) {
+      var k = monthKey(state.visits[i].visit_date);
+      if (!seen[k]) { seen[k] = 1; out.push(k); }
+    }
+    out.sort();
+    return out;
+  }
+
+  function monthTitle(ym) {
+    if (!ym) return "";
+    var p = ym.split("-");
+    return MONTHS[+p[1] - 1] + " " + p[0];
+  }
+
+  function datesInMonth(ym) {
+    return datesList().filter(function (d) { return monthKey(d) === ym; });
+  }
+
+  function visitsInMonth(ym) {
+    return state.visits.filter(function (v) { return monthKey(v.visit_date) === ym; });
+  }
+
+  // Land on the month the user is most likely to want: the one we are in, if it
+  // has visits; otherwise the next upcoming month; otherwise the most recent one.
+  // Falling back to "the first month in the table" would show August forever.
+  function defaultMonth() {
+    var months = monthsList();
+    if (!months.length) return null;
+    var now = new Date();
+    var thisMonth = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+    if (months.indexOf(thisMonth) !== -1) return thisMonth;
+    for (var i = 0; i < months.length; i++) if (months[i] > thisMonth) return months[i];
+    return months[months.length - 1];
+  }
+
+  // ---- nurse colours ----
+  //
+  // Colours are DERIVED from the name, never stored and never configured. A new
+  // nurse gets a colour the first time she signs up, with no edit to this file
+  // and no row in any table. That is the whole point: adding people has to be
+  // free, because it will happen constantly and nobody is going to come back
+  // here to maintain a list.
+  //
+  // The hash is deterministic, so the same name always gets the same colour on
+  // every device and every reload.
+  var NURSE_COLOURS = [
+    { bg: "#FFF3A3", fg: "#4A3F00" },   // yellow
+    { bg: "#A8E6CF", fg: "#0B3D2E" },   // green
+    { bg: "#AEE7F8", fg: "#06384A" },   // cyan
+    { bg: "#F8B8D0", fg: "#5A0B2B" },   // pink
+    { bg: "#FFC9A3", fg: "#5A2A00" },   // orange
+    { bg: "#D5C4F1", fg: "#2E1A5A" },   // purple
+    { bg: "#B8E0A0", fg: "#1F3D0B" },   // lime
+    { bg: "#F9AFAF", fg: "#5A0B0B" },   // red
+    { bg: "#BFD4F2", fg: "#122A55" },   // blue
+    { bg: "#EFD3A3", fg: "#4A3208" },   // sand
+    { bg: "#C9EDE4", fg: "#0C3B33" },   // teal
+    { bg: "#F3C6E8", fg: "#4E0F42" },   // orchid
+    { bg: "#E2E8A8", fg: "#3B3F0B" },   // olive
+    { bg: "#CFCFEA", fg: "#26264F" },   // periwinkle
+    { bg: "#FBD3B8", fg: "#5A2E10" },   // peach
+    { bg: "#B9E3C6", fg: "#12401F" }    // mint
+  ];
+
+  // Colours are assigned by POSITION in the sorted list of nurses who actually
+  // appear in the data, not by hashing the name.
+  //
+  // Hashing was tried first and is wrong here. With ten colours and six nurses a
+  // collision is more likely than not, and it happened immediately: two nurses
+  // came out the same shade of green. Colour coding whose whole job is telling
+  // people apart cannot hand two people the same colour.
+  //
+  // Position-based assignment guarantees every nurse on screen is distinct, and
+  // stays stable as long as the roster does. Adding a nurse still needs no
+  // configuration: she appears in the data, she gets the next colour.
+  var _colourMap = null;
+
+  function rebuildColourMap() {
+    var seen = {};
+    state.visits.forEach(function (v) {
+      if (v.claimed_by) seen[v.claimed_by.trim().toLowerCase()] = 1;
+    });
+    _colourMap = {};
+    Object.keys(seen).sort().forEach(function (n, i) {
+      _colourMap[n] = NURSE_COLOURS[i % NURSE_COLOURS.length];
+    });
+  }
+
+  function nurseColour(name) {
+    var key = String(name || "").trim().toLowerCase();
+    if (!key) return null;
+    if (!_colourMap) rebuildColourMap();
+    return _colourMap[key] || NURSE_COLOURS[0];
+  }
+
+  function nurseChipHTML(name) {
+    var c = nurseColour(name);
+    if (!c) return "";
+    return '<span class="nchip" style="background:' + c.bg + ';color:' + c.fg + '">' + esc(name) + '</span>';
+  }
+
+  // ---- facilities ----
+  //
+  // Read straight out of the data. Adding a facility means adding visits with a
+  // new location; nothing here changes. Visits with no location are kept under
+  // their own heading rather than dropped.
+  var NO_FACILITY = "￿";
+
+  function facilityLabel(key) { return key === NO_FACILITY ? "No facility listed" : key; }
+
+  function facilitiesIn(visits) {
+    var seen = {};
+    visits.forEach(function (v) { seen[v.location || NO_FACILITY] = 1; });
+    return Object.keys(seen).sort();
+  }
+
+  // The patient a facility belongs to, if it is consistent. Shown in the
+  // calendar header the way the paper version does it. If a facility ever has
+  // more than one patient this returns null and the header just omits it,
+  // rather than picking one arbitrarily.
+  function patientFor(visits, facilityKey) {
+    var names = {};
+    visits.forEach(function (v) {
+      if ((v.location || NO_FACILITY) === facilityKey && v.patient_name) names[v.patient_name] = 1;
+    });
+    var list = Object.keys(names);
+    return list.length === 1 ? list[0] : null;
+  }
+
+  // ---- calendar grid ----
+  //
+  // Builds the weeks of a month as a Sunday-first grid, padded with nulls so the
+  // dates land under the right weekday. Returns [[Date|null x7], ...].
+  function monthGrid(ym) {
+    var p = ym.split("-"), year = +p[0], month = +p[1] - 1;
+    var first = new Date(year, month, 1);
+    var days = new Date(year, month + 1, 0).getDate();
+    var cells = [];
+    for (var b = 0; b < first.getDay(); b++) cells.push(null);
+    for (var d = 1; d <= days; d++) cells.push(new Date(year, month, d));
+    while (cells.length % 7) cells.push(null);
+    var weeks = [];
+    for (var i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+    return weeks;
+  }
+
+  function isoOf(date) {
+    return date.getFullYear() + "-" +
+           String(date.getMonth() + 1).padStart(2, "0") + "-" +
+           String(date.getDate()).padStart(2, "0");
+  }
+
+  function isMine(v) {
+    return !!(v.claimed_by && state.nurse &&
+              v.claimed_by.trim().toLowerCase() === state.nurse.trim().toLowerCase());
+  }
+
+  // Scoped to a month when ym is given ('YYYY-MM'), otherwise every month.
+  //
+  // The scope is not cosmetic. Until 2026-08-31 the table held August only, so
+  // "all my visits" and "my visits this month" were the same number and the
+  // unscoped count was right by accident. The moment September, October and
+  // November were generated, the badge started reading 40 while the page showed
+  // September, where the same nurse had none. A count next to a month selector
+  // has to mean that month.
+  function myVisits(ym) {
+    return state.visits.filter(function (v) {
+      return isMine(v) && (!ym || monthKey(v.visit_date) === ym);
+    }).sort(function (a, b) {
+      return a.visit_date < b.visit_date ? -1 : a.visit_date > b.visit_date ? 1 : byTime(a, b);
+    });
+  }
+
+  // The label follows the data instead of being hardcoded, so the header cannot
+  // go on claiming "August 2026" once the schedule moves past August. Handles a
+  // span, because an ongoing schedule will routinely cross a month boundary.
+  function periodLabel() {
+    var dates = datesList();
+    if (!dates.length) return "";
+    var a = parseDate(dates[0]), b = parseDate(dates[dates.length - 1]);
+    if (a.getFullYear() === b.getFullYear()) {
+      if (a.getMonth() === b.getMonth()) return MONTHS[a.getMonth()] + " " + a.getFullYear();
+      return MONTHS[a.getMonth()] + " – " + MONTHS[b.getMonth()] + " " + a.getFullYear();
+    }
+    return MONTHS[a.getMonth()] + " " + a.getFullYear() + " – " + MONTHS[b.getMonth()] + " " + b.getFullYear();
+  }
+
+  // A refusal caused by not being signed in, as opposed to a genuine error.
+  // Postgres returns 42501 for a missing privilege; PostgREST surfaces RLS
+  // refusals as PGRST301/401. Anything else is a real fault and must not be
+  // disguised as a login prompt.
+  function isAuthError(err) {
+    if (!err) return false;
+    var code = String(err.code || "");
+    return code === "42501" || code === "PGRST301" || err.status === 401 ||
+           /permission denied|jwt|not authorized/i.test(err.message || "");
+  }
+
+  // The API returns at most 1000 rows per request (Supabase's default max-rows),
+  // and says nothing when it cuts a list short. At 1464 rows the schedule stopped
+  // at Oct 28: the end of October and all of November silently vanished. So read
+  // in pages, each starting where the rows received so far end, until a page
+  // comes back empty. Offsetting by rows received (not by a page size) stays
+  // correct even if the server cap is lowered. The `id` order term makes the
+  // order total, so no row lands on two pages or none.
+  async function fetchAllVisits() {
+    var rows = [];
+    for (;;) {
+      var res = await sb.from(TABLE).select("*")
+        .order("visit_date", { ascending: true }).order("sort_order", { ascending: true })
+        .order("id", { ascending: true })
+        .range(rows.length, rows.length + 999);
+      if (res.error) return res;
+      if (!res.data || !res.data.length) return { data: rows, error: null };
+      rows = rows.concat(res.data);
+    }
+  }
+
+  async function loadAll() {
+    var res = await fetchAllVisits();
+    if (res.error) {
+      // Not signed in -> ask for the passcode rather than showing an error.
+      // This is what makes the rollout need no coordinated deploy: while the
+      // table is still readable anonymously the gate never appears, and the
+      // moment 003b restricts it, every page starts asking. Same file either way.
+      if (isAuthError(res.error)) { renderPasscodeGate(); return; }
+
+      // Name the table in the message. On the dev copy the overwhelmingly likely
+      // cause is that the migration has not been run yet, and "please refresh"
+      // sends you round that loop forever.
+      el("content").innerHTML =
+        '<div class="loading">Could not load the schedule from <b>' + esc(TABLE) + '</b>.<br>' +
+        esc(res.error.message || "Unknown error") +
+        (USE_DEV ? '<br><br>If this table does not exist yet, run <code>db/001-create-dev-tables.sql</code> in the Supabase SQL editor.' : '') +
+        '</div>';
+      return;
+    }
+    state.visits = res.data || [];
+    state.locked = false;
+    indexVisits();
+    // Pick the month on first load, and re-pick if the current selection no
+    // longer exists -- the schedule can change under a page that stays open.
+    if (!state.month || monthsList().indexOf(state.month) === -1) state.month = defaultMonth();
+    render();
+  }
+
+  // ---- passcode gate ----
+  //
+  // The passcode is the password of one shared Supabase Auth account. It is
+  // never stored in this file: the page collects it, exchanges it for a session,
+  // and supabase-js keeps that session in localStorage so it survives reloads.
+  // Gating the markup would protect nothing on its own -- the data is served by
+  // PostgREST and the publishable key is public -- so the real control is the RLS
+  // policy behind it. This screen is how a nurse gets past that policy, not the
+  // policy itself.
+  var SHARED_ACCOUNT = "nurses@nursevisitsignup.app";
+
+  function renderPasscodeGate(message) {
+    state.locked = true;
+    el("header").innerHTML =
+      '<div class="hdr">' +
+        '<div class="eyebrow">Nurse Visit Sign-Up</div>' +
+        '<div class="title">Enter the passcode</div>' +
+      '</div>';
+    el("whoami").innerHTML = "";
+    el("content").innerHTML =
+      '<div class="gate fade">' +
+        '<p class="gatetext">This schedule is private. Enter the passcode your coordinator gave you.</p>' +
+        '<div class="gaterow">' +
+          '<input id="pc" type="password" inputmode="text" autocomplete="current-password" ' +
+                 'placeholder="passcode" aria-label="Passcode" />' +
+          '<button id="pcgo" class="btn-signup">Enter</button>' +
+        '</div>' +
+        (message ? '<p class="gateerr">' + esc(message) + '</p>' : '') +
+      '</div>';
+    var input = el("pc"), go = el("pcgo");
+    var submit = async function () {
+      var code = (input.value || "").trim();
+      if (!code) return;
+      go.disabled = true; go.textContent = "Checking…";
+      var res = await sb.auth.signInWithPassword({ email: SHARED_ACCOUNT, password: code });
+      if (res.error) {
+        renderPasscodeGate("That passcode was not recognised.");
+        return;
+      }
+      state.signedIn = true;
+      el("content").innerHTML = '<div class="loading"><div class="spinner"></div>Loading schedule…</div>';
+      await loadAll();
+      renderWhoami();             // now that a session exists, offer sign-out
+      subscribeLive();            // the boot subscription, if any, was made without a session
+    };
+    go.onclick = submit;
+    input.onkeydown = function (e) { if (e.key === "Enter") submit(); };
+    input.focus();
+  }
+
+  async function signOut() {
+    await sb.auth.signOut();
+    state.visits = []; state.byId = {}; state.selectedDate = null; state.signedIn = false;
+    renderPasscodeGate();
+  }
+
+  function subscribeLive() {
+    sb.channel("visits-live-" + TABLE)
+      .on("postgres_changes", { event: "*", schema: "public", table: TABLE }, function (payload) {
+        // DELETE (D2 fix): payload.new is empty on a delete, so drop the row by
+        // payload.old.id instead of leaving it on screen until a refresh.
+        if (payload.eventType === "DELETE") {
+          var oldid = payload.old && payload.old.id;
+          if (oldid && state.byId[oldid]) {
+            delete state.byId[oldid];
+            state.visits = state.visits.filter(function (x) { return x.id !== oldid; });
+            render();
+          }
+          return;
+        }
+        var row = payload.new;
+        if (!row || !row.id) return;
+        if (state.byId[row.id]) {
+          // update in place
+          var cur = state.byId[row.id];
+          for (var k in row) cur[k] = row[k];
+        } else {
+          state.visits.push(row); state.byId[row.id] = row;
+        }
+        render();
+      })
+      .subscribe(function (status) {
+        state.live = (status === "SUBSCRIBED");
+        renderFoot();
+      });
+  }
+
+  // ---- actions ----
+  async function claim(id) {
+    var nurse = getNurse();
+    if (!nurse) return;
+    var res = await sb.from(TABLE)
+      .update({ claimed_by: nurse, claimed_at: new Date().toISOString() })
+      .eq("id", id).is("claimed_by", null).select();
+    if (res.error) { toast("Something went wrong — try again."); return; }
+    if (!res.data || !res.data.length) {
+      // someone beat us to it — refresh that row
+      var one = await sb.from(TABLE).select("*").eq("id", id).single();
+      if (one.data) { state.byId[id] && (function(){ var c = state.byId[id]; for (var k in one.data) c[k] = one.data[k]; })(); render(); }
+      toast("Just taken by someone else.");
+      return;
+    }
+    var c = state.byId[id]; var nw = res.data[0]; for (var k in nw) c[k] = nw[k];
+    render(); toast("You're signed up.");
+  }
+
+  async function release(id) {
+    var res = await sb.from(TABLE)
+      .update({ claimed_by: null, claimed_at: null })
+      .eq("id", id).select();
+    if (res.error) { toast("Something went wrong — try again."); return; }
+    if (res.data && res.data.length) { var c = state.byId[id], nw = res.data[0]; for (var k in nw) c[k] = nw[k]; }
+    render(); toast("Sign-up removed.");
+  }
+
+  // ---- editing (feature 3): coordinator only, passcode-gated ----
+  //
+  // A write here uses the signed-in (authenticated) session token, which db/010
+  // grants edit/insert/delete on the detail columns. anon has no such grant, so
+  // the publishable key in the page source still cannot edit anything.
+
+  function closeModal() { var m = el("modal"); m.innerHTML = ""; m.style.display = "none"; }
+  function openModal(inner) {
+    var m = el("modal");
+    m.style.display = "flex";
+    m.innerHTML = '<div class="modal-bg"><div class="modal">' + inner + '</div></div>';
+    m.querySelector(".modal-bg").onclick = function (e) { if (e.target === this) closeModal(); };
+  }
+
+  function toggleEdit() {
+    if (!state.signedIn) { openEditorSignIn(); return; }
+    state.editMode = !state.editMode;
+    renderWhoami(); render();
+    toast(state.editMode ? "Editing on." : "Editing off.");
+  }
+
+  // Sign in as the shared passcode account, then turn editing on. Lets a
+  // coordinator edit even while reads are still anonymous (003b not run) and the
+  // full-screen passcode gate never appeared.
+  function openEditorSignIn() {
+    openModal(
+      '<h3>Edit the schedule</h3>' +
+      '<p style="font-size:13px;color:#55505A;margin:0 0 4px;">Enter the coordinator passcode to edit visits, times, and add or remove visits.</p>' +
+      '<label>Passcode</label>' +
+      '<input id="ecode" type="password" autocomplete="current-password" placeholder="passcode" />' +
+      '<div class="err" id="eerr"></div>' +
+      '<div class="acts"><button class="cancel" id="ecancel">Cancel</button><button class="save" id="ego">Sign in</button></div>');
+    var go = el("ego"), input = el("ecode");
+    el("ecancel").onclick = closeModal;
+    var submit = async function () {
+      var code = (input.value || "").trim();
+      if (!code) return;
+      go.disabled = true; go.textContent = "Checking…";
+      var res = await sb.auth.signInWithPassword({ email: SHARED_ACCOUNT, password: code });
+      if (res.error) { el("eerr").textContent = "That passcode was not recognised."; go.disabled = false; go.textContent = "Sign in"; return; }
+      state.signedIn = true; state.editMode = true;
+      closeModal(); renderWhoami(); render(); toast("Editing on.");
+    };
+    go.onclick = submit;
+    input.onkeydown = function (e) { if (e.key === "Enter") submit(); };
+    input.focus();
+  }
+
+  // Add/edit form. v = the row to edit, or null to add a new visit.
+  function openVisitForm(v) {
+    if (!v && !state.selectedDate && !datesList().length) { toast("Open a day first."); return; }
+    var adding = !v;
+    var day = adding ? (state.selectedDate || datesList()[0]) : v.visit_date;
+    function fv(x) { return esc(x == null ? "" : x); }
+    openModal(
+      '<h3>' + (adding ? "Add a visit" : "Edit visit") + '</h3>' +
+      '<div class="row2">' +
+        '<div><label>Date</label><input id="f_date" type="date" value="' + fv(day) + '" /></div>' +
+        '<div><label>Time</label><input id="f_time" type="text" placeholder="7:00 AM" value="' + (adding ? "" : fv(v.time_label)) + '" /></div>' +
+      '</div>' +
+      '<label>Section</label><input id="f_section" type="text" placeholder="Morning" value="' + (adding ? "" : fv(v.section)) + '" />' +
+      '<label>Patient</label><input id="f_patient" type="text" value="' + (adding ? "" : fv(v.patient_name)) + '" />' +
+      '<label>Facility</label><input id="f_loc" type="text" value="' + (adding ? "" : fv(v.location)) + '" />' +
+      '<label>Task</label><textarea id="f_task">' + (adding ? "" : fv(v.task)) + '</textarea>' +
+      '<div class="err" id="ferr"></div>' +
+      '<div class="acts"><button class="cancel" id="fcancel">Cancel</button><button class="save" id="fsave">' + (adding ? "Add visit" : "Save changes") + '</button></div>');
+    el("fcancel").onclick = closeModal;
+    el("fsave").onclick = function () { saveVisit(adding ? null : v.id); };
+    el("f_time").focus();
+  }
+
+  var MANUAL_ORDER_BASE = 100;
+  function nextFreeOrder(dateIso) {
+    var max = MANUAL_ORDER_BASE;
+    for (var i = 0; i < state.visits.length; i++) {
+      var v = state.visits[i];
+      if (v.visit_date === dateIso && v.sort_order > max) max = v.sort_order;
+    }
+    return max + 1;
+  }
+
+  async function saveVisit(id) {
+    var save = el("fsave"), errbox = el("ferr");
+    var rec = {
+      visit_date: (el("f_date").value || "").trim(),
+      time_label: (el("f_time").value || "").trim(),
+      section: (el("f_section").value || "").trim(),
+      patient_name: (el("f_patient").value || "").trim() || null,
+      location: (el("f_loc").value || "").trim() || null,
+      task: (el("f_task").value || "").trim() || null
+    };
+    if (!rec.visit_date || !rec.time_label || !rec.section) {
+      errbox.textContent = "Date, time and section are required."; return;
+    }
+    // The day lists visits in clock order, so the time has to be readable as one.
+    var mins = parseTime(rec.time_label);
+    if (mins === null) { errbox.textContent = "Enter the time like 3:15 PM."; return; }
+    rec.time_label = formatTime(mins);
+
+    // No order to type any more: the list sorts by time. sort_order still has to
+    // be unique per day (db/008), and it is also the slot key the daily schedule
+    // matches on (db/011), so an edit that stays on the same day keeps its number.
+    // A visit added by hand, or moved to another day, takes the next number from
+    // 101 up -- daily-schedule slots count up from 1, so the two never collide.
+    var old = id ? state.byId[id] : null;
+    var needOrder = !old || old.visit_date !== rec.visit_date;
+    save.disabled = true; save.textContent = "Saving…";
+    var res;
+    for (var attempt = 0; attempt < 5; attempt++) {
+      if (needOrder) rec.sort_order = nextFreeOrder(rec.visit_date) + attempt;
+      res = id
+        ? await sb.from(TABLE).update(rec).eq("id", id).select()
+        : await sb.from(TABLE).insert(rec).select();
+      // 23505 = another device took that number first; try the next one.
+      if (!(res.error && res.error.code === "23505" && needOrder)) break;
+    }
+    if (res.error) {
+      save.disabled = false; save.textContent = id ? "Save changes" : "Add visit";
+      errbox.textContent = isAuthError(res.error) ? "Your editing session expired — sign in again." : "Could not save — try again.";
+      return;
+    }
+    var row = res.data && res.data[0];
+    if (row) {
+      if (state.byId[row.id]) { var c = state.byId[row.id]; for (var k in row) c[k] = row[k]; }
+      else { state.visits.push(row); state.byId[row.id] = row; }
+    }
+    closeModal(); render(); toast(id ? "Visit updated." : "Visit added.");
+  }
+
+  function confirmDelete(id) {
+    var v = state.byId[id]; if (!v) return;
+    openModal(
+      '<h3>Delete this visit?</h3>' +
+      '<p style="font-size:13.5px;color:#55505A;margin:0 0 4px;">' +
+        esc(longDate(v.visit_date)) + ' · ' + esc(v.time_label) +
+        (v.patient_name ? ' · ' + esc(v.patient_name) : '') + '</p>' +
+      (v.claimed_by ? '<p style="font-size:12.5px;color:var(--pink);font-weight:600;margin:0;">' +
+        esc(v.claimed_by) + ' is signed up for this visit.</p>' : '') +
+      '<div class="err" id="derr"></div>' +
+      '<div class="acts"><button class="cancel" id="dcancel">Keep it</button><button class="save" id="dyes">Delete</button></div>');
+    el("dcancel").onclick = closeModal;
+    el("dyes").onclick = async function () {
+      var b = el("dyes"); b.disabled = true; b.textContent = "Deleting…";
+      var res = await sb.from(TABLE).delete().eq("id", id);
+      if (res.error) { el("derr").textContent = isAuthError(res.error) ? "Session expired — sign in again." : "Could not delete — try again."; b.disabled = false; b.textContent = "Delete"; return; }
+      delete state.byId[id];
+      state.visits = state.visits.filter(function (x) { return x.id !== id; });
+      closeModal(); render(); toast("Visit deleted.");
+    };
+  }
+
+  // ---- master daily schedule (feature 4) ----
+  //
+  // The client edits ONE list of visits that happen every day. A change flows to
+  // every OPEN day; days a nurse already signed up for are left alone and reported.
+  // The safety-critical work is in the DB functions (db/011); this is just the UI.
+  // The RPCs take TABLE as target and derive the matching template table.
+
+  async function openDailySchedule() {
+    openModal('<h3>Daily schedule</h3><div class="loading" id="dsbody">Loading…</div>');
+    var res = await sb.from(TEMPLATE_TABLE).select("*").order("sort_order", { ascending: true });
+    var body = el("dsbody"); if (!body) return;
+    if (res.error) {
+      body.className = "err";
+      body.textContent = isAuthError(res.error) ? "Your editing session expired — sign in again." : "Could not load the daily schedule.";
+      return;
+    }
+    state.template = (res.data || []).sort(byTime);
+    var rows = state.template.map(function (t) {
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid #eee;">' +
+        '<div style="min-width:0;"><b>' + esc(t.time_label) + '</b> · ' + esc(t.patient_name || "—") +
+        '<div style="font-size:11.5px;color:#8a8590;">' + esc(t.section) +
+        (t.location ? ' · ' + esc(t.location) : '') + '</div></div>' +
+        '<div class="vedit"><button class="e" data-tedit="' + esc(t.id) + '">✎</button>' +
+        '<button class="d" data-tdel="' + esc(t.id) + '">🗑</button></div></div>';
+    }).join("") || '<p style="font-size:13px;color:#55505A;">No daily visits yet — add the first one below.</p>';
+    body.className = "";
+    body.innerHTML =
+      '<p style="font-size:12.5px;color:#55505A;margin:0 0 8px;">These visits happen <b>every day</b>. A change here updates every open day; days a nurse already signed up for are left as-is.</p>' +
+      rows +
+      '<div class="acts"><button class="cancel" id="dsclose">Close</button><button class="save" id="dsadd">+ Add a daily visit</button></div>';
+    el("dsclose").onclick = closeModal;
+    el("dsadd").onclick = function () { openTemplateForm(null); };
+    function byId(id) { return state.template.filter(function (x) { return x.id === id; })[0]; }
+    Array.prototype.forEach.call(body.querySelectorAll("[data-tedit]"), function (btn) {
+      btn.onclick = function () { openTemplateForm(byId(btn.getAttribute("data-tedit"))); };
+    });
+    Array.prototype.forEach.call(body.querySelectorAll("[data-tdel]"), function (btn) {
+      btn.onclick = function () { confirmDeleteTemplate(byId(btn.getAttribute("data-tdel"))); };
+    });
+  }
+
+  // Add/edit a daily visit. t = template row to edit, or null to add. No date
+  // field: a template row is "every day".
+  function openTemplateForm(t) {
+    var adding = !t;
+    function fv(x) { return esc(x == null ? "" : x); }
+    // The slot number is not typed any more; the list sorts by time. A new slot
+    // takes the next number past both the template and any visit added by hand
+    // under the old typed-order form (e.g. a one-off #12): generation skips a day
+    // whose number is already taken (ON CONFLICT DO NOTHING, db/011).
+    var nextOrder = t ? t.sort_order : (function () {
+      var m = state.template.reduce(function (acc, x) { return Math.max(acc, x.sort_order || 0); }, 0);
+      state.visits.forEach(function (v) {
+        if (v.sort_order <= MANUAL_ORDER_BASE && v.sort_order > m) m = v.sort_order;
+      });
+      return m + 1;
+    })();
+    openModal(
+      '<h3>' + (adding ? "Add a daily visit" : "Edit daily visit") + '</h3>' +
+      '<p style="font-size:12.5px;color:#55505A;margin:0 0 4px;">Applies to every day.</p>' +
+      '<label>Time</label><input id="t_time" type="text" placeholder="7:00 AM" value="' + (adding ? "" : fv(t.time_label)) + '" />' +
+      '<label>Section</label><input id="t_section" type="text" placeholder="Morning" value="' + (adding ? "" : fv(t.section)) + '" />' +
+      '<label>Patient</label><input id="t_patient" type="text" value="' + (adding ? "" : fv(t.patient_name)) + '" />' +
+      '<label>Facility</label><input id="t_loc" type="text" value="' + (adding ? "" : fv(t.location)) + '" />' +
+      '<label>Task</label><textarea id="t_task">' + (adding ? "" : fv(t.task)) + '</textarea>' +
+      '<div class="err" id="terr"></div>' +
+      '<div class="acts"><button class="cancel" id="tcancel">Cancel</button><button class="save" id="tsave">' + (adding ? "Add to every day" : "Save changes") + '</button></div>');
+    el("tcancel").onclick = function () { openDailySchedule(); };
+    el("tsave").onclick = function () { saveTemplateSlot(adding ? null : t.id, nextOrder); };
+    el("t_time").focus();
+  }
+
+  async function saveTemplateSlot(id, order) {
+    var save = el("tsave"), errbox = el("terr");
+    var rec = {
+      p_section: (el("t_section").value || "").trim(),
+      p_order: order,
+      p_time: (el("t_time").value || "").trim(),
+      p_patient: (el("t_patient").value || "").trim() || null,
+      p_location: (el("t_loc").value || "").trim() || null,
+      p_task: (el("t_task").value || "").trim() || null
+    };
+    if (!rec.p_section || !rec.p_time) {
+      errbox.textContent = "Time and section are required."; return;
+    }
+    var mins = parseTime(rec.p_time);
+    if (mins === null) { errbox.textContent = "Enter the time like 3:15 PM."; return; }
+    rec.p_time = formatTime(mins);
+    save.disabled = true; save.textContent = "Saving…";
+    var args = { target_table: TABLE, p_section: rec.p_section, p_order: rec.p_order,
+                 p_time: rec.p_time, p_patient: rec.p_patient, p_location: rec.p_location, p_task: rec.p_task };
+    var res = id
+      ? await sb.rpc("edit_template_slot", Object.assign({ p_id: id }, args))
+      : await sb.rpc("add_template_slot", args);
+    if (res.error) {
+      save.disabled = false; save.textContent = id ? "Save changes" : "Add to every day";
+      errbox.textContent = isAuthError(res.error) ? "Your editing session expired — sign in again." : "Could not save — try again.";
+      return;
+    }
+    var d = res.data || {};
+    var msg;
+    if (id) {
+      msg = "Updated " + (d.days_updated || 0) + " day" + (d.days_updated === 1 ? "" : "s");
+      if (d.claimed_skipped) msg += " · " + d.claimed_skipped + " already-claimed left unchanged";
+    } else {
+      msg = "Added to " + (d.days_added || 0) + " day" + (d.days_added === 1 ? "" : "s");
+    }
+    await loadAll();
+    toast(msg);
+    openDailySchedule();
+  }
+
+  function confirmDeleteTemplate(t) {
+    if (!t) return;
+    openModal(
+      '<h3>Remove this daily visit?</h3>' +
+      '<p style="font-size:13.5px;color:#55505A;margin:0 0 4px;">' + esc(t.time_label) + ' · ' + esc(t.patient_name || "—") + '</p>' +
+      '<p style="font-size:12.5px;color:#55505A;margin:0 0 4px;">Removed from every open day going forward. Days a nurse already signed up for are kept.</p>' +
+      '<div class="err" id="tderr"></div>' +
+      '<div class="acts"><button class="cancel" id="tdcancel">Keep it</button><button class="save" id="tdyes">Remove</button></div>');
+    el("tdcancel").onclick = function () { openDailySchedule(); };
+    el("tdyes").onclick = async function () {
+      var b = el("tdyes"); b.disabled = true; b.textContent = "Removing…";
+      var res = await sb.rpc("delete_template_slot", { target_table: TABLE, p_id: t.id });
+      if (res.error) { el("tderr").textContent = isAuthError(res.error) ? "Session expired — sign in again." : "Could not remove — try again."; b.disabled = false; b.textContent = "Remove"; return; }
+      var d = res.data || {};
+      var msg = "Removed from " + (d.days_removed || 0) + " day" + (d.days_removed === 1 ? "" : "s");
+      if (d.claimed_kept) msg += " · " + d.claimed_kept + " already-claimed kept";
+      await loadAll();
+      toast(msg);
+      openDailySchedule();
+    };
+  }
+
+  // ---- rendering ----
+  function renderWhoami() {
+    var w = el("whoami");
+    if (state.locked) { w.innerHTML = ""; return; }
+    if (state.nurse) {
+      w.innerHTML = 'Signing up as <b>' + esc(state.nurse) + '</b> <button id="chg">change</button>';
+    } else {
+      w.innerHTML = '<button id="chg">Set your name</button>';
+    }
+    // Only offer sign-out once a session actually exists, so the control does not
+    // appear on a page that never required one.
+    if (state.signedIn) w.innerHTML += ' <button id="sout">sign out</button>';
+    // Editing (feature 3): signed-in coordinators toggle edit mode; everyone else
+    // gets a passcode prompt first. Anon can never edit — writes are RLS-gated.
+    w.innerHTML += ' <button id="editt">' +
+      (state.signedIn ? (state.editMode ? "editing: on" : "editing: off") : "edit schedule") + '</button>';
+    // Master daily schedule (feature 4): only while actively editing.
+    if (state.signedIn && state.editMode) {
+      w.innerHTML += ' <button id="dailysched">daily schedule</button>';
+    }
+    var b = document.getElementById("chg"); if (b) b.onclick = changeNurse;
+    var s = document.getElementById("sout"); if (s) s.onclick = signOut;
+    var et = document.getElementById("editt"); if (et) et.onclick = toggleEdit;
+    var ds = document.getElementById("dailysched"); if (ds) ds.onclick = openDailySchedule;
+  }
+
+  function renderFoot() {
+    el("foot").innerHTML =
+      '<span class="live-dot ' + (state.live ? "" : "off") + '"></span>' +
+      (state.live ? "Live · updates for everyone in real time" : "Shared with all nurses on this schedule");
+  }
+
+  function render() {
+    rebuildColourMap();
+    if (state.selectedDate) renderDay();
+    else viewById(state.view).draw();
+    renderFoot();
+    var p = state.month ? monthTitle(state.month) : periodLabel();
+    document.title = "Nurse Visit Sign-Up" + (p ? " · " + p : "") + (USE_DEV ? " [DEV]" : "");
+  }
+
+  // The three top-level views. Rendered as part of the header so they survive
+  // every re-render, including the ones realtime triggers.
+  // The views, in one place. Adding a view means adding an entry here and a
+  // render function; nothing else in the file needs to know about it.
+  //   id     what state.view is set to
+  //   label  the tab caption
+  //   badge  optional count shown as a pill
+  //   draw   the render function
+  var VIEWS = [
+    { id: "month",    label: "Schedule",    draw: function () { renderMonth(); } },
+    { id: "mine",     label: "My visits",   draw: function () { renderMine(); },
+      badge: function () { return myVisits(state.month).length; } },
+    { id: "facility", label: "By facility", draw: function () { renderFacility(); } }
+  ];
+
+  function viewById(id) {
+    for (var i = 0; i < VIEWS.length; i++) if (VIEWS[i].id === id) return VIEWS[i];
+    return VIEWS[0];
+  }
+
+  function tabsHTML() {
+    var out = '<div class="tabs">';
+    VIEWS.forEach(function (v) {
+      var n = v.badge ? v.badge() : 0;
+      out += '<button class="tab' + (state.view === v.id ? " on" : "") + '" data-view="' + v.id + '">' +
+             v.label + (n ? ' <span class="pill">' + n + '</span>' : "") + '</button>';
+    });
+    return out + '</div>';
+  }
+
+  function wireTabs() {
+    var t = document.querySelectorAll(".tab");
+    for (var i = 0; i < t.length; i++) {
+      t[i].onclick = (function (v) {
+        return function () { state.view = v; state.selectedDate = null; window.scrollTo(0, 0); render(); };
+      })(t[i].getAttribute("data-view"));
+    }
+  }
+
+  // One visit card, used by the day view, My visits and By facility. Kept in a
+  // single function so the three views cannot drift apart, and so claim/release
+  // is wired the same way everywhere.
+  function visitCardHTML(v, opts) {
+    opts = opts || {};
+    var tparts = splitTime(v.time_label);
+    var claimed = !!v.claimed_by;
+    var mine = isMine(v);
+    return '<div class="visit' + (claimed ? " claimed" : "") + '">' +
+      '<div class="vtime"><span class="t">' + esc(tparts[0]) + '</span><span class="ap">' + esc(tparts[1]) + '</span></div>' +
+      '<div class="vbody">' +
+        (opts.showDate ? '<div class="vdate">' + esc(longDate(v.visit_date)) + '</div>' : '') +
+        '<div><span class="vpatient">' + esc(v.patient_name || "Visit") + '</span>' +
+          (opts.hideLocation || !v.location ? '' : '<span class="vloc">' + esc(v.location) + '</span>') + '</div>' +
+        (v.task ? '<div class="vtask">' + esc(v.task) + '</div>' : '') +
+        (claimed
+          ? '<div class="claimed-by"><span class="tag">✓ </span>' + nurseChipHTML(v.claimed_by) +
+              '<button class="release" data-id="' + v.id + '">' + (mine ? "Cancel my sign-up" : "Remove") + '</button></div>'
+          : '<div class="vaction"><button class="btn-signup" data-id="' + v.id + '">Sign up for this visit</button></div>') +
+        (state.signedIn && state.editMode
+          ? '<div class="vedit"><button class="e" data-edit="' + v.id + '">✎ Edit</button>' +
+              '<button class="d" data-del="' + v.id + '">🗑 Delete</button></div>'
+          : '') +
+      '</div>' +
+    '</div>';
+  }
+
+  function wireVisitButtons() {
+    var signs = el("content").querySelectorAll(".btn-signup");
+    for (var s = 0; s < signs.length; s++) {
+      signs[s].onclick = (function (id) { return function () { claim(id); }; })(signs[s].getAttribute("data-id"));
+    }
+    var rels = el("content").querySelectorAll(".release");
+    for (var r = 0; r < rels.length; r++) {
+      rels[r].onclick = (function (id) {
+        return function () { if (window.confirm("Remove this sign-up?")) release(id); };
+      })(rels[r].getAttribute("data-id"));
+    }
+    var eds = el("content").querySelectorAll("[data-edit]");
+    for (var e2 = 0; e2 < eds.length; e2++) {
+      eds[e2].onclick = (function (id) { return function () { openVisitForm(state.byId[id]); }; })(eds[e2].getAttribute("data-edit"));
+    }
+    var dels = el("content").querySelectorAll("[data-del]");
+    for (var d2 = 0; d2 < dels.length; d2++) {
+      dels[d2].onclick = (function (id) { return function () { confirmDelete(id); }; })(dels[d2].getAttribute("data-del"));
+    }
+  }
+
+  function longDate(iso) {
+    var d = parseDate(iso);
+    return DOW_LONG[d.getDay()] + ", " + MONTHS[d.getMonth()] + " " + d.getDate();
+  }
+
+  function monthNavHTML() {
+    var months = monthsList(), i = months.indexOf(state.month);
+    var prev = i > 0 ? months[i - 1] : null;
+    var next = i > -1 && i < months.length - 1 ? months[i + 1] : null;
+    return '<div class="monthnav">' +
+      '<button class="mnav" id="mprev"' + (prev ? ' data-m="' + prev + '"' : ' disabled') + '>‹</button>' +
+      '<span class="mlabel">' + esc(monthTitle(state.month)) + '</span>' +
+      '<button class="mnav" id="mnext"' + (next ? ' data-m="' + next + '"' : ' disabled') + '>›</button>' +
+    '</div>';
+  }
+
+  function wireMonthNav() {
+    ["mprev", "mnext"].forEach(function (id) {
+      var b = document.getElementById(id);
+      if (b && b.getAttribute("data-m")) {
+        b.onclick = function () { state.month = this.getAttribute("data-m"); window.scrollTo(0, 0); render(); };
+      }
+    });
+  }
+
+  function renderMonth() {
+    el("header").innerHTML =
+      '<div class="hdr">' +
+        '<div class="eyebrow">Nurse Visit Sign-Up</div>' +
+        monthNavHTML() +
+        tabsHTML() +
+      '</div>';
+    var dates = datesInMonth(state.month);
+    if (!dates.length) {
+      el("content").innerHTML = '<div class="empty fade">No visits scheduled for ' + esc(monthTitle(state.month)) + '.</div>';
+      wireTabs(); wireMonthNav();
+      return;
+    }
+    var cells = "";
+    for (var i = 0; i < dates.length; i++) {
+      var iso = dates[i], d = parseDate(iso), c = countFor(iso);
+      var cls = c.claimed === 0 ? "zero" : (c.claimed >= c.total ? "full" : "some");
+      cells +=
+        '<button class="day" data-date="' + iso + '">' +
+          '<span class="dow">' + DOW[d.getDay()] + '</span>' +
+          '<span class="num">' + d.getDate() + '</span>' +
+          '<span class="cnt ' + cls + '">' + c.claimed + '/' + c.total + '</span>' +
+        '</button>';
+    }
+    el("content").innerHTML =
+      '<div class="gridwrap fade"><div class="grid">' + cells + '</div>' +
+      '<div class="hint">Tap a day to view visits and sign up · updates live for everyone</div></div>';
+    var btns = el("content").querySelectorAll(".day");
+    for (var j = 0; j < btns.length; j++) {
+      btns[j].onclick = (function (iso) { return function () { state.selectedDate = iso; window.scrollTo(0,0); render(); }; })(btns[j].getAttribute("data-date"));
+    }
+    wireTabs(); wireMonthNav();
+  }
+
+  // "Give me my schedule" -- every visit signed up for under the current name,
+  // across all months, not just the one being viewed. Grouped by date because
+  // that is how a shift is actually read.
+  function renderMine() {
+    var rows = myVisits(state.month);
+    var period = state.month ? monthTitle(state.month) : "";
+    el("header").innerHTML =
+      '<div class="hdr">' +
+        '<div class="eyebrow">Nurse Visit Sign-Up</div>' +
+        '<div class="title">' + (state.nurse ? esc(state.nurse) + "'s visits" : "My visits") + '</div>' +
+        (rows.length ? '<div class="covered">' + rows.length + ' visit' + (rows.length === 1 ? '' : 's') +
+                       ' signed up' + (period ? ' in ' + esc(period) : '') + '</div>' : '') +
+        tabsHTML() +
+      '</div>';
+
+    if (!state.nurse) {
+      el("content").innerHTML =
+        '<div class="empty fade">Set your name first and this will show everything you have signed up for.' +
+        '<div class="emptyact"><button class="btn-signup" id="setname">Set your name</button></div></div>';
+      wireTabs();
+      var sn = document.getElementById("setname"); if (sn) sn.onclick = changeNurse;
+      return;
+    }
+    if (!rows.length) {
+      el("content").innerHTML = '<div class="empty fade">You have not signed up for any visits' +
+        (period ? ' in ' + esc(period) : '') + '. Use the arrows above to check another month.</div>';
+      wireTabs();
+      return;
+    }
+
+    var html = '<div class="daywrap fade">', lastDate = null;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].visit_date !== lastDate) {
+        html += '<div class="section-label">' + esc(longDate(rows[i].visit_date)) + '</div>';
+        lastDate = rows[i].visit_date;
+      }
+      html += visitCardHTML(rows[i]);
+    }
+    el("content").innerHTML = html + '</div>';
+    wireTabs(); wireVisitButtons();
+  }
+
+  // Month calendar split by facility. Visits with no location are grouped under
+  // their own heading rather than dropped -- 124 of the 341 rows have none, and
+  // silently hiding a third of the schedule would be worse than an ugly heading.
+  // Month calendar, one per facility, laid out the way the paper version is:
+  // weekday columns, dates in the corner, every visit for that day listed in the
+  // cell with the nurse's name colour coded.
+  //
+  // Deliberately different from the paper version in one way: unclaimed visits
+  // are shown as "open" rather than omitted. A sign-up sheet whose calendar only
+  // shows filled slots hides the thing you are looking for.
+  function renderFacility() {
+    var rows = visitsInMonth(state.month);
+    el("header").innerHTML =
+      '<div class="hdr">' +
+        '<div class="eyebrow">Nurse Visit Sign-Up</div>' +
+        monthNavHTML() +
+        tabsHTML() +
+      '</div>';
+
+    if (!rows.length) {
+      el("content").innerHTML = '<div class="empty fade">No visits scheduled for ' + esc(monthTitle(state.month)) + '.</div>';
+      wireTabs(); wireMonthNav();
+      return;
+    }
+
+    // index visits by facility then by date, so each cell is a cheap lookup
+    var byFac = {};
+    rows.forEach(function (v) {
+      var f = v.location || NO_FACILITY;
+      (byFac[f] = byFac[f] || {});
+      (byFac[f][v.visit_date] = byFac[f][v.visit_date] || []).push(v);
+    });
+
+    var weeks = monthGrid(state.month);
+    var html = '<div class="calwrap fade">';
+
+    facilitiesIn(rows).forEach(function (fac) {
+      var byDate = byFac[fac] || {};
+      var all = Object.keys(byDate).reduce(function (a, d) { return a.concat(byDate[d]); }, []);
+      var taken = all.filter(function (v) { return v.claimed_by; }).length;
+      var patient = patientFor(rows, fac);
+
+      html +=
+        '<div class="calhead">' +
+          '<div class="calmonth">' + esc(monthTitle(state.month)) + '</div>' +
+          '<div class="calfac">' + esc(facilityLabel(fac)) +
+            (patient ? ' <span class="calsep">/</span> <span class="calpat">' + esc(patient) + '</span>' : '') + '</div>' +
+          '<div class="calcount">' + taken + ' of ' + all.length + ' covered</div>' +
+        '</div>' +
+        '<div class="calgrid">';
+
+      DOW.forEach(function (d) { html += '<div class="caldow">' + d + '</div>'; });
+
+      weeks.forEach(function (week) {
+        week.forEach(function (date) {
+          if (!date) { html += '<div class="calcell empty"></div>'; return; }
+          var iso = isoOf(date);
+          var list = (byDate[iso] || []).slice().sort(byTime);
+          html += '<div class="calcell' + (list.length ? '' : ' quiet') + '" data-date="' + iso + '">' +
+                    '<div class="caldate">' + date.getDate() + '</div>';
+          list.forEach(function (v) {
+            html += '<div class="calslot' + (v.claimed_by ? '' : ' free') + '">' +
+                      '<span class="caltime">' + esc(v.time_label) + '</span> ' +
+                      (v.claimed_by ? nurseChipHTML(v.claimed_by)
+                                    : '<span class="calopen">open</span>') +
+                    '</div>';
+          });
+          html += '</div>';
+        });
+      });
+      html += '</div>';
+    });
+
+    html += '<div class="hint">Tap any day to sign up or make changes</div></div>';
+    el("content").innerHTML = html;
+
+    var cells = el("content").querySelectorAll(".calcell[data-date]");
+    for (var i = 0; i < cells.length; i++) {
+      cells[i].onclick = (function (iso) {
+        return function () { state.selectedDate = iso; window.scrollTo(0, 0); render(); };
+      })(cells[i].getAttribute("data-date"));
+    }
+    wireTabs(); wireMonthNav();
+  }
+
+  function renderDay() {
+    var iso = state.selectedDate, d = parseDate(iso), c = countFor(iso);
+    el("header").innerHTML =
+      '<div class="hdr">' +
+        '<div class="eyebrow">Nurse Visit Sign-Up · ' + esc(periodLabel()) + '</div>' +
+        '<div class="backrow"><button class="back" id="backbtn">‹ Back to month</button></div>' +
+        '<div class="daytitle">' + DOW_LONG[d.getDay()] + ', ' + MONTHS[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear() + '</div>' +
+        '<div class="covered">' + c.claimed + '/' + c.total + ' covered</div>' +
+      '</div>';
+
+    var rows = state.visits.filter(function (v) { return v.visit_date === iso; })
+      .sort(byTime);
+
+    var html = '<div class="daywrap fade">';
+    var lastSection = null;
+    for (var i = 0; i < rows.length; i++) {
+      var v = rows[i];
+      if (v.section !== lastSection) { html += '<div class="section-label">' + esc(v.section) + '</div>'; lastSection = v.section; }
+      html += visitCardHTML(v);
+    }
+    if (state.signedIn && state.editMode) {
+      html += '<button class="addvisit" id="addvisit">+ Add a visit to this day</button>';
+    }
+    html += '</div>';
+    el("content").innerHTML = html;
+
+    var back = document.getElementById("backbtn");
+    if (back) back.onclick = function () { state.selectedDate = null; window.scrollTo(0,0); render(); };
+    wireVisitButtons();
+    var av = document.getElementById("addvisit");
+    if (av) av.onclick = function () { openVisitForm(null); };
+  }
+
+  function splitTime(label) {
+    // "6:00 AM" -> ["6:00","AM"]
+    var m = String(label || "").match(/^(.*?)\s*(AM|PM)?$/i);
+    if (m && m[2]) return [m[1], m[2].toUpperCase()];
+    return [label || "", ""];
+  }
+
+  function renderEnvBar() {
+    if (!USE_DEV) return;                       // live site shows nothing
+    el("envbar").className = "envbar";
+    el("envbar").innerHTML =
+      'DEV DATA · reading and writing <code>' + esc(TABLE) + '</code> · real sign-ups are not affected';
+  }
+
+  // ---- boot ----
+  //
+  // getSession() must be awaited before the first query. supabase-js restores a
+  // persisted session ASYNCHRONOUSLY, so firing loadAll() immediately would run
+  // it as `anon` even for a nurse who signed in yesterday -- which would show the
+  // passcode gate to someone already holding a valid session, every reload.
+  (async function boot() {
+    renderEnvBar();
+    renderFoot();
+    try {
+      var sess = await sb.auth.getSession();
+      state.signedIn = !!(sess && sess.data && sess.data.session);
+    } catch (e) { state.signedIn = false; }
+    renderWhoami();
+    await loadAll();
+    if (!state.locked) subscribeLive();
+  })();
+})();
+</script>
+</body>
+</html>
