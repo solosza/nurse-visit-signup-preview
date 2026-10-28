@@ -326,8 +326,8 @@
   //   ?prod=1   force the live table, e.g. to read prod from a local checkout
   var IS_LIVE_SITE = location.hostname === "solosza.github.io" &&
                      location.pathname.indexOf("/nurse-visit-signup/") === 0;
-  // PREVIEW BUILD: always the practice table. ?prod=1 is ignored here.
-  var USE_DEV = true;
+  var USE_DEV = /[?&]dev=1/.test(location.search) ||
+                (!/[?&]prod=1/.test(location.search) && !IS_LIVE_SITE);
   var TABLE = USE_DEV ? "visits_dev" : "visits";
   // Master daily schedule (feature 4). The template functions take TABLE as their
   // target and derive the matching template table themselves; the app reads the
@@ -345,7 +345,8 @@
     locked: false,         // true while the passcode gate is showing
     view: "month",         // "month" | "mine" | "facility"
     month: null,           // 'YYYY-MM' currently shown; null until data loads
-    editMode: false        // coordinator editing (feature 3); needs a signed-in session
+    editMode: false,       // coordinator editing (feature 3); needs the admin session
+    isAdmin: false         // session carries app_metadata.role = admin (backlog 397)
   };
 
   var MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -712,6 +713,57 @@
   // policy itself.
   var SHARED_ACCOUNT = "nurses@nursevisitsignup.app";
 
+  // The coordinator's own login (backlog 397). Editing, the daily schedule and
+  // removing anyone's sign-up need it; the shared nurse passcode does not unlock
+  // them. The role is read from app_metadata, which only the server can set, and
+  // RLS checks the same claim (db/012), so this flag only decides what to show.
+  var ADMIN_ACCOUNT = "admin@nursevisitsignup.app";
+  function sessionIsAdmin(session) {
+    var md = session && session.user && session.user.app_metadata;
+    return !!(md && md.role === "admin");
+  }
+
+  // ---- claim tokens (backlog 397) ----
+  //
+  // A sign-up is "yours" if this device holds the secret it was made with. The
+  // server keeps only a hash of it and asks for it back to cancel (db/012), so a
+  // typed name is not enough to cancel someone else's visit.
+  var TOKEN_STORE = "claimTokens";
+  function tokenMap() {
+    try { return JSON.parse(localStorage.getItem(TOKEN_STORE) || "{}") || {}; } catch (e) { return {}; }
+  }
+  function tokenFor(id) { return tokenMap()[TABLE + ":" + id] || null; }
+  function setToken(id, tok) {
+    var m = tokenMap();
+    if (tok) m[TABLE + ":" + id] = tok; else delete m[TABLE + ":" + id];
+    try { localStorage.setItem(TOKEN_STORE, JSON.stringify(m)); } catch (e) {}
+  }
+  function newToken() {
+    var b = new Uint8Array(32); crypto.getRandomValues(b);
+    return Array.prototype.map.call(b, function (x) { return ("0" + x.toString(16)).slice(-2); }).join("");
+  }
+
+  // 48-hour lock (backlog 398): a visit locks at 12:00 AM Hawaii time two days
+  // before its date. Hawaii is UTC-10 all year (no daylight saving), so midnight
+  // there is 10:00 UTC on the same date. The server enforces this (db/013); the
+  // page only uses it to show "Locked" instead of a button that would be refused.
+  var LOCK_MS = 48 * 3600 * 1000;
+  function isLocked(v) {
+    var p = String(v.visit_date).split("-");
+    return Date.now() >= Date.UTC(+p[0], +p[1] - 1, +p[2], 10, 0, 0) - LOCK_MS;
+  }
+
+  // "Please notify supervisor" (backlog 396), shown after a nurse cancels her own
+  // sign-up. A modal, not a toast, so it cannot fade before it is read.
+  function showNotifySupervisor() {
+    openModal(
+      '<h3>Sign-up cancelled</h3>' +
+      '<p style="font-size:16px;margin:4px 0 8px;"><b>Please notify supervisor</b></p>' +
+      '<div class="acts"><button class="save" id="nsok">OK</button></div>');
+    el("nsok").onclick = closeModal;
+    el("nsok").focus();
+  }
+
   function renderPasscodeGate(message) {
     state.locked = true;
     el("header").innerHTML =
@@ -741,6 +793,7 @@
         return;
       }
       state.signedIn = true;
+      state.isAdmin = sessionIsAdmin(res.data && res.data.session);
       el("content").innerHTML = '<div class="loading"><div class="spinner"></div>Loading schedule…</div>';
       await loadAll();
       renderWhoami();             // now that a session exists, offer sign-out
@@ -754,6 +807,7 @@
   async function signOut() {
     await sb.auth.signOut();
     state.visits = []; state.byId = {}; state.selectedDate = null; state.signedIn = false;
+    state.isAdmin = false; state.editMode = false;
     renderPasscodeGate();
   }
 
@@ -789,31 +843,49 @@
   }
 
   // ---- actions ----
+  // A refusal from claim_visit/release_visit (db/012, db/013) carries its own
+  // plain-English message under these codes; show that rather than a generic one.
+  var REFUSAL_CODES = { NV001: true, NV002: true, NV003: true, NV004: true };
+
+  // Claims and cancels go through server functions (db/012), never a direct
+  // UPDATE: the functions are what check the claim token and the 48-hour lock.
   async function claim(id) {
     var nurse = getNurse();
     if (!nurse) return;
-    var res = await sb.from(TABLE)
-      .update({ claimed_by: nurse, claimed_at: new Date().toISOString() })
-      .eq("id", id).is("claimed_by", null).select();
-    if (res.error) { toast("Something went wrong — try again."); return; }
-    if (!res.data || !res.data.length) {
+    var tok = newToken();
+    var res = await sb.rpc("claim_visit", { target_table: TABLE, p_id: id, p_nurse: nurse, p_token: tok });
+    if (res.error) {
+      // Open page after the passcode cutover (backlog 316): ask for the passcode
+      // instead of "Something went wrong".
+      if (isAuthError(res.error)) { renderPasscodeGate("Please enter the passcode to continue."); return; }
+      toast(REFUSAL_CODES[res.error.code] ? res.error.message : "Something went wrong — try again.");
+      return;
+    }
+    if (!res.data) {
       // someone beat us to it — refresh that row
       var one = await sb.from(TABLE).select("*").eq("id", id).single();
       if (one.data) { state.byId[id] && (function(){ var c = state.byId[id]; for (var k in one.data) c[k] = one.data[k]; })(); render(); }
       toast("Just taken by someone else.");
       return;
     }
-    var c = state.byId[id]; var nw = res.data[0]; for (var k in nw) c[k] = nw[k];
+    setToken(id, tok);
+    var c = state.byId[id]; var nw = res.data; for (var k in nw) c[k] = nw[k];
     render(); toast("You're signed up.");
   }
 
   async function release(id) {
-    var res = await sb.from(TABLE)
-      .update({ claimed_by: null, claimed_at: null })
-      .eq("id", id).select();
-    if (res.error) { toast("Something went wrong — try again."); return; }
-    if (res.data && res.data.length) { var c = state.byId[id], nw = res.data[0]; for (var k in nw) c[k] = nw[k]; }
-    render(); toast("Sign-up removed.");
+    var asAdmin = state.isAdmin;
+    var res = await sb.rpc("release_visit", { target_table: TABLE, p_id: id, p_token: tokenFor(id) });
+    if (res.error) {
+      if (isAuthError(res.error)) { renderPasscodeGate("Please enter the passcode to continue."); return; }
+      toast(REFUSAL_CODES[res.error.code] ? res.error.message : "Something went wrong — try again.");
+      return;
+    }
+    setToken(id, null);
+    if (res.data) { var c = state.byId[id], nw = res.data; for (var k in nw) c[k] = nw[k]; }
+    render();
+    if (asAdmin) toast("Sign-up removed.");
+    else showNotifySupervisor();
   }
 
   // ---- editing (feature 3): coordinator only, passcode-gated ----
@@ -831,21 +903,21 @@
   }
 
   function toggleEdit() {
-    if (!state.signedIn) { openEditorSignIn(); return; }
+    if (!state.isAdmin) { openEditorSignIn(); return; }
     state.editMode = !state.editMode;
     renderWhoami(); render();
     toast(state.editMode ? "Editing on." : "Editing off.");
   }
 
-  // Sign in as the shared passcode account, then turn editing on. Lets a
-  // coordinator edit even while reads are still anonymous (003b not run) and the
-  // full-screen passcode gate never appeared.
+  // Sign in as the admin account (backlog 397), then turn editing on. Works
+  // whether or not reads still need the nurse passcode; the admin session
+  // replaces the nurse one on this device until "sign out".
   function openEditorSignIn() {
     openModal(
-      '<h3>Edit the schedule</h3>' +
-      '<p style="font-size:13px;color:#55505A;margin:0 0 4px;">Enter the coordinator passcode to edit visits, times, and add or remove visits.</p>' +
-      '<label>Passcode</label>' +
-      '<input id="ecode" type="password" autocomplete="current-password" placeholder="passcode" />' +
+      '<h3>Admin sign-in</h3>' +
+      '<p style="font-size:13px;color:#55505A;margin:0 0 4px;">Enter the admin password to edit visits, times, the daily schedule, and remove sign-ups.</p>' +
+      '<label>Admin password</label>' +
+      '<input id="ecode" type="password" autocomplete="current-password" placeholder="admin password" />' +
       '<div class="err" id="eerr"></div>' +
       '<div class="acts"><button class="cancel" id="ecancel">Cancel</button><button class="save" id="ego">Sign in</button></div>');
     var go = el("ego"), input = el("ecode");
@@ -854,9 +926,12 @@
       var code = (input.value || "").trim();
       if (!code) return;
       go.disabled = true; go.textContent = "Checking…";
-      var res = await sb.auth.signInWithPassword({ email: SHARED_ACCOUNT, password: code });
-      if (res.error) { el("eerr").textContent = "That passcode was not recognised."; go.disabled = false; go.textContent = "Sign in"; return; }
-      state.signedIn = true; state.editMode = true;
+      var res = await sb.auth.signInWithPassword({ email: ADMIN_ACCOUNT, password: code });
+      if (res.error) { el("eerr").textContent = "That password was not recognised."; go.disabled = false; go.textContent = "Sign in"; return; }
+      if (!sessionIsAdmin(res.data && res.data.session)) {
+        el("eerr").textContent = "This account is not set up as admin."; go.disabled = false; go.textContent = "Sign in"; return;
+      }
+      state.signedIn = true; state.isAdmin = true; state.editMode = true;
       closeModal(); renderWhoami(); render(); toast("Editing on.");
     };
     go.onclick = submit;
@@ -1113,12 +1188,14 @@
     // Only offer sign-out once a session actually exists, so the control does not
     // appear on a page that never required one.
     if (state.signedIn) w.innerHTML += ' <button id="sout">sign out</button>';
-    // Editing (feature 3): signed-in coordinators toggle edit mode; everyone else
-    // gets a passcode prompt first. Anon can never edit — writes are RLS-gated.
+    // Editing (feature 3): only the admin toggles edit mode; everyone else gets
+    // the admin sign-in first. Nurses can never edit — writes are RLS-gated to
+    // the admin role (db/012).
+    if (state.isAdmin) w.innerHTML += ' <b style="color:#7A3E9D;">admin</b>';
     w.innerHTML += ' <button id="editt">' +
-      (state.signedIn ? (state.editMode ? "editing: on" : "editing: off") : "edit schedule") + '</button>';
+      (state.isAdmin ? (state.editMode ? "editing: on" : "editing: off") : "admin") + '</button>';
     // Master daily schedule (feature 4): only while actively editing.
-    if (state.signedIn && state.editMode) {
+    if (state.isAdmin && state.editMode) {
       w.innerHTML += ' <button id="dailysched">daily schedule</button>';
     }
     var b = document.getElementById("chg"); if (b) b.onclick = changeNurse;
@@ -1188,7 +1265,19 @@
     opts = opts || {};
     var tparts = splitTime(v.time_label);
     var claimed = !!v.claimed_by;
-    var mine = isMine(v);
+    // Who gets a button on a claimed visit (backlogs 397, 398): the admin can
+    // remove anyone's; a nurse can cancel only a sign-up made on this device
+    // (it holds the claim token), and not once the visit is inside 48 hours.
+    // Everyone else sees no button at all.
+    var ownsClaim = claimed && !!tokenFor(v.id);
+    var releaseHTML = "";
+    if (claimed && state.isAdmin) {
+      releaseHTML = '<button class="release" data-id="' + v.id + '">Remove</button>';
+    } else if (ownsClaim && isLocked(v)) {
+      releaseHTML = '<span class="locked-note" style="font-size:12px;color:#8A5A00;">Locked (within 48 hours). Contact your supervisor to change it.</span>';
+    } else if (ownsClaim) {
+      releaseHTML = '<button class="release" data-id="' + v.id + '">Cancel my sign-up</button>';
+    }
     return '<div class="visit' + (claimed ? " claimed" : "") + '">' +
       '<div class="vtime"><span class="t">' + esc(tparts[0]) + '</span><span class="ap">' + esc(tparts[1]) + '</span></div>' +
       '<div class="vbody">' +
@@ -1198,9 +1287,9 @@
         (v.task ? '<div class="vtask">' + esc(v.task) + '</div>' : '') +
         (claimed
           ? '<div class="claimed-by"><span class="tag">✓ </span>' + nurseChipHTML(v.claimed_by) +
-              '<button class="release" data-id="' + v.id + '">' + (mine ? "Cancel my sign-up" : "Remove") + '</button></div>'
+              releaseHTML + '</div>'
           : '<div class="vaction"><button class="btn-signup" data-id="' + v.id + '">Sign up for this visit</button></div>') +
-        (state.signedIn && state.editMode
+        (state.isAdmin && state.editMode
           ? '<div class="vedit"><button class="e" data-edit="' + v.id + '">✎ Edit</button>' +
               '<button class="d" data-del="' + v.id + '">🗑 Delete</button></div>'
           : '') +
@@ -1216,7 +1305,9 @@
     var rels = el("content").querySelectorAll(".release");
     for (var r = 0; r < rels.length; r++) {
       rels[r].onclick = (function (id) {
-        return function () { if (window.confirm("Remove this sign-up?")) release(id); };
+        return function () {
+          if (window.confirm(state.isAdmin ? "Remove this sign-up?" : "Cancel your sign-up for this visit?")) release(id);
+        };
       })(rels[r].getAttribute("data-id"));
     }
     var eds = el("content").querySelectorAll("[data-edit]");
@@ -1435,7 +1526,7 @@
       if (v.section !== lastSection) { html += '<div class="section-label">' + esc(v.section) + '</div>'; lastSection = v.section; }
       html += visitCardHTML(v);
     }
-    if (state.signedIn && state.editMode) {
+    if (state.isAdmin && state.editMode) {
       html += '<button class="addvisit" id="addvisit">+ Add a visit to this day</button>';
     }
     html += '</div>';
@@ -1474,7 +1565,8 @@
     try {
       var sess = await sb.auth.getSession();
       state.signedIn = !!(sess && sess.data && sess.data.session);
-    } catch (e) { state.signedIn = false; }
+      state.isAdmin = sessionIsAdmin(sess && sess.data && sess.data.session);
+    } catch (e) { state.signedIn = false; state.isAdmin = false; }
     renderWhoami();
     await loadAll();
     if (!state.locked) subscribeLive();
